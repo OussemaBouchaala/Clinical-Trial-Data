@@ -1,0 +1,38 @@
+============================================================
+QUALITY METRICS REPORT
+============================================================
+
+--- COUNTRY ---
+Unique combinations: 439 → 438 (reduced by 1)
+Individual countries: 131 → 130
+Method: pycountry + manual pre/post-fix dictionaries
+
+--- SPONSOR ---
+Unique sponsors: 2517 → 2506 (reduced by 11)
+Method: suffix standardization + core extraction + fuzzy matching (pharma only)
+
+--- DRUG / INTERVENTION ---
+Unique values: 4924 → 4875 (reduced by 49)
+Dictionary: 387 entries (47 brand→generic, 340 casing)
+Method: regex cleaning + RxNorm API (NIH)
+
+--- DISEASE / CONDITION ---
+Unique cells: 3663 → 3561 (reduced by 102)
+Individual conditions: 5124 → 4889 (reduced by 235)
+Dictionary: 99 entries
+Method: abbreviation expansion + casing + plurals + British→American + fuzzy matching
+
+--- BIOMARKER EXTRACTION ---
+Biomarker column not present — extraction incomplete due to Kaggle crash.
+Code is functional (tested: ~6% parse failure rate, ~7.9 sec/trial on T4 GPU)
+Estimated full run: ~5.5 hours on dual T4 GPU setup
+
+Model: Shubh-0789/biomarker-qwen3.5-0.8b-lora-v2.1
+Libraries: transformers 5.2.0 + peft
+Hardware: Kaggle GPU T4 x2 (16GB VRAM each)
+Batching: single-trial loop (batch tokenization broken in transformers 5.2)
+Decoding: greedy (do_sample=False)
+
+============================================================
+END OF REPORT
+============================================================
