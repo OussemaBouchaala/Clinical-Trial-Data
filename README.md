@@ -1,7 +1,87 @@
-# Clinical Trial Data Cleaning, Harmonization & Biomarker Extraction
+<h1 align="center">🧬 Clinical Trial Data Harmonization & Biomarker Extraction</h1>
+<p align="center">Turning ~5,000 messy ClinicalTrials.gov records into clean, searchable data, then extracting biomarkers with a small LLM.<br/>
+<b>Python · pandas · RxNorm API · fuzzy matching · Hugging Face Transformers · LoRA (PEFT)</b></p>
 
-## Overview
-Cleaned and harmonized ~5,000 clinical trials from ClinicalTrials.gov across 4 fields (country, sponsor, drug, disease) and attempted biomarker extraction using a fine-tuned Qwen3.5-0.8B LoRA model.
+---
+
+## Problem
+
+ClinicalTrials.gov data is entered by thousands of sponsors with no shared vocabulary. The same drug, disease, company or country appears under many spellings ("Avastin" vs. "Bevacizumab", "NSCLC" vs. "Non-Small Cell Lung Cancer", "USA" vs. "United States"). A researcher searching for a drug or disease silently misses part of the trials, and biomarkers are buried in free text.
+
+## Solution
+
+A step-by-step Python pipeline that cleans and harmonizes 4 key fields (country, sponsor, drug, disease) with dictionaries, external references and safe fuzzy matching, measures the before/after quality, and runs a LoRA fine-tuned Qwen 0.8B model to extract biomarker names from trial text as JSON.
+
+**Results:** 233 duplicate disease names merged, 47 brand names mapped to generics, 130 clean countries, and a working biomarker extractor (~7.9 s/trial on a T4 GPU, ~6% JSON parse failures).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    RAW[(trials_sample.csv<br/>~5,000 trials)] --> C[02 Country<br/>pycountry + fixes]
+    C --> S[03 Sponsor<br/>suffixes + fuzzy]
+    S --> D[04 Drugs<br/>regex + RxNorm API]
+    D --> X[05 Diseases<br/>abbreviations + fuzzy]
+    X --> CLEAN[(data/processed/)]
+    D -.-> DICT[(data/dictionaries/<br/>drug & disease JSON)]
+    X -.-> DICT
+    CLEAN --> Q[07 Quality report]
+    CLEAN --> G[08 Before vs after search]
+    RAW --> B[06 Biomarker extraction<br/>Qwen 0.8B + LoRA, GPU]
+    B --> BIO[(biomarkers JSON)]
+```
+
+## How the workflow runs
+
+Each script reads the output of the previous one, so every step can be inspected and re-run on its own:
+
+| Step | Script | Input → Output |
+|---|---|---|
+| 1 | `src/01_explore.py` | Profile columns, missing values and messiness |
+| 2 | `src/02_harmonize_country.py` | `raw/trials_sample.csv` → `processed/trials_country_cleaned.csv` |
+| 3 | `src/03_harmonize_sponsor.py` | → `processed/trials_sponsor_cleaned.csv` |
+| 4 | `src/04_harmonize_drugs.py` | → `processed/trials_drugs_cleaned.csv` + drug dictionary |
+| 5 | `src/05_harmonize_diseases.py` | → `processed/trials_conditions_cleaned.csv` + disease dictionary |
+| 6 | `src/06_biomarker_extraction_kaggle.py` | Trial text → biomarkers (GPU, Kaggle) |
+| 7 | `src/07_quality_metrics.py` | Before/after report → `outputs/quality_report.txt` |
+| 8 | `src/08_stretch_goal.py` | Shows how many more trials a search finds after cleaning |
+
+## How to run
+
+The raw dataset is not committed. Put `trials_sample.csv` in `data/raw/`, then:
+
+```bash
+git clone https://github.com/OussemaBouchaala/Clinical-Trial-Data.git
+cd Clinical-Trial-Data
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+mkdir -p data/processed
+
+python src/02_harmonize_country.py
+python src/03_harmonize_sponsor.py
+python src/04_harmonize_drugs.py      # calls the RxNorm API, ~10 min
+python src/05_harmonize_diseases.py
+cp data/processed/trials_conditions_cleaned.csv data/processed/trials_cleaned.csv
+python src/07_quality_metrics.py
+python src/08_stretch_goal.py
+```
+
+No time to run it? The final numbers are in [`outputs/quality_report.txt`](outputs/quality_report.txt) and the table below.
+
+Biomarker extraction (step 6) needs a GPU with at least 3 GB of VRAM; it was run on Kaggle (2× T4).
+
+## Project structure
+
+```
+├── src/                 # Pipeline steps 01 → 08
+├── notebooks/           # Exploration and biomarker notebooks (local + Kaggle)
+├── data/
+│   ├── raw/             # trials_sample.csv (not committed)
+│   ├── processed/       # Cleaned CSVs (generated)
+│   └── dictionaries/    # drug_dictionary.json, disease_dictionary.json
+├── outputs/             # quality_report.txt
+└── requirements.txt
+```
 
 ## Approach per Field
 
@@ -76,20 +156,6 @@ Cleaned and harmonized ~5,000 clinical trials from ClinicalTrials.gov across 4 f
 4. **Sponsor deduplication** — extend fuzzy matching to institutions with stricter rules
 5. **Biomarker validation** — sample 100 results manually to measure precision/recall of the model
 6. **Batched inference** — debug tokenizer padding issue in transformers 5.2 for proper batch generation
-
-## Files
-
-- `data/raw/trials_sample.csv` — original dataset
-- `data/processed/trials_cleaned.csv` — harmonized CSV with cleaned columns
-- `data/dictionaries/drug_dictionary.json` — drug variant → canonical name
-- `data/dictionaries/disease_dictionary.json` — disease variant → canonical name
-- `src/01_explore.py` — data exploration
-- `src/02_harmonize_country.py` — country cleaning
-- `src/03_harmonize_sponsor.py` — sponsor normalization
-- `src/04_harmonize_drugs.py` — drug harmonization
-- `src/05_harmonize_diseases.py` — disease harmonization
-- `notebooks/biomarker_extraction_kaggle.ipynb` — biomarker extraction (Kaggle notebook)
-- `README.md` — this file
 
 ## Tools & Libraries Used
 - Python 3.12, pandas, pycountry, thefuzz, regex
